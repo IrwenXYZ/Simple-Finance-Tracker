@@ -1,14 +1,14 @@
-import json
-import os
 import pandas as pd
-from telebot import types
+import os
 
 
 class CategoriesCog:
-    def __init__(self, bot, allowed_user_id):
+    def __init__(self, bot, allowed_user_id, defer_creation=False):
         self.bot = bot
         self.ALLOWED_USER_ID = allowed_user_id
-        self.categories_file = "categories.json"
+        self.data_file = "data.xlsx"  # Excel file for categories
+        self.sheet_name = "Categories"  # Sheet name for categories
+        self.defer_creation = defer_creation
         self.categories = self.load_categories()
 
         # Register command handlers
@@ -32,25 +32,38 @@ class CategoriesCog:
         return message.from_user.id == self.ALLOWED_USER_ID
 
     def load_categories(self):
-        """Load categories from JSON file or return defaults if file doesn't exist"""
-        default_categories = ["Food", "Transportation", "Entertainment", "Utilities", "Shopping", "Health", "Car", "Other"]
+        """Load categories from Excel file or return defaults without creating file if deferred"""
+        default_categories = ["Food", "Transportation", "Entertainment", "Utilities", "Shopping", "Health", "Housing", "Other"]
 
-        if os.path.exists(self.categories_file):
+        if os.path.exists(self.data_file):
             try:
-                with open(self.categories_file, 'r') as f:
-                    return json.load(f)
-            except Exception:
+                df = pd.read_excel(self.data_file, sheet_name=self.sheet_name)
+                return df["Category"].tolist()
+            except Exception as e:
+                print(f"Error loading categories from Excel: {e}")
                 return default_categories
         else:
-            # Save defaults to file
-            with open(self.categories_file, 'w') as f:
-                json.dump(default_categories, f)
+            # File doesn't exist
+            if not self.defer_creation:
+                # Save defaults to file only if not deferred
+                self.save_categories(default_categories)
             return default_categories
 
-    def save_categories(self):
-        """Save categories to JSON file"""
-        with open(self.categories_file, 'w') as f:
-            json.dump(self.categories, f)
+    def save_categories(self, categories):
+        """Save categories to Excel file"""
+        df = pd.DataFrame({"Category": categories})
+
+        if os.path.exists(self.data_file):
+            # Read existing data
+            with pd.ExcelWriter(self.data_file, mode="a", if_sheet_exists="replace") as writer:
+                df.to_excel(writer, sheet_name=self.sheet_name, index=False)
+        else:
+            # Create new file
+            with pd.ExcelWriter(self.data_file) as writer:
+                df.to_excel(writer, sheet_name=self.sheet_name, index=False)
+                # Create empty expenses sheet
+                pd.DataFrame(columns=["Name", "Account", "Category", "Amount"]).to_excel(
+                    writer, sheet_name="Expenses", index=False)
 
     def get_categories(self):
         """Return the current list of categories"""
@@ -89,13 +102,17 @@ class CategoriesCog:
             self.bot.reply_to(message, "Category name cannot be empty.")
             return
 
-        if new_category in self.categories:
-            self.bot.reply_to(message, f"Category '{new_category}' already exists.")
-            return
+        result = self.add_category(new_category)
+        self.bot.reply_to(message, result)
 
-        self.categories.append(new_category)
-        self.save_categories()
-        self.bot.reply_to(message, f"Category '{new_category}' added successfully!")
+    def add_category(self, new_category):
+        """Add a new category to the Excel file"""
+        if new_category not in self.categories:
+            self.categories.append(new_category)
+            self.save_categories(self.categories)
+            return f"Category '{new_category}' added successfully!"
+        else:
+            return f"Category '{new_category}' already exists."
 
     def remove_category_command(self, message):
         """Command to remove a category"""
@@ -107,6 +124,7 @@ class CategoriesCog:
             self.bot.reply_to(message, "No categories to remove.")
             return
 
+        from telebot import types
         markup = types.InlineKeyboardMarkup(row_width=2)
         buttons = []
 
@@ -123,32 +141,6 @@ class CategoriesCog:
             reply_markup=markup
         )
 
-    def process_remove_category_callback_impl(self, call):
-        """Process the category removal selection"""
-        user_id = call.from_user.id
-
-        if user_id != self.ALLOWED_USER_ID:
-            return
-
-        # Extract category from callback data
-        category_to_remove = call.data.replace('remove_cat_', '', 1)
-
-        if category_to_remove in self.categories:
-            self.categories.remove(category_to_remove)
-            self.save_categories()
-
-            self.bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=f"Category '{category_to_remove}' has been removed."
-            )
-        else:
-            self.bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=f"Category '{category_to_remove}' not found or already removed."
-            )
-
     def edit_category_command(self, message):
         """Command to edit a category name"""
         if not self.is_authorized(message):
@@ -159,6 +151,7 @@ class CategoriesCog:
             self.bot.reply_to(message, "No categories to edit.")
             return
 
+        from telebot import types
         markup = types.InlineKeyboardMarkup(row_width=2)
         buttons = []
 
@@ -174,6 +167,45 @@ class CategoriesCog:
             "Select a category to edit:",
             reply_markup=markup
         )
+
+    def setup_callback_handlers(self):
+        """Setup callback handlers for this cog"""
+        self.edit_category_session = {}  # Store category editing sessions
+
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith('remove_cat_'))
+        def process_remove_category_callback(call):
+            self.process_remove_category_callback_impl(call)
+
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith('edit_cat_'))
+        def process_edit_category_callback(call):
+            self.process_edit_category_callback_impl(call)
+
+    def process_remove_category_callback_impl(self, call):
+        """Process the category removal selection"""
+        user_id = call.from_user.id
+
+        if user_id != self.ALLOWED_USER_ID:
+            return
+
+        # Extract category from callback data
+        category_to_remove = call.data.replace('remove_cat_', '', 1)
+
+        result = self.remove_category(category_to_remove)
+
+        self.bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=result
+        )
+
+    def remove_category(self, category_to_remove):
+        """Remove a category from the Excel file"""
+        if category_to_remove in self.categories:
+            self.categories.remove(category_to_remove)
+            self.save_categories(self.categories)
+            return f"Category '{category_to_remove}' removed successfully!"
+        else:
+            return f"Category '{category_to_remove}' not found."
 
     def process_edit_category_callback_impl(self, call):
         """Process the category edit selection"""
@@ -231,9 +263,9 @@ class CategoriesCog:
         # Update the category in the list
         index = self.categories.index(old_category)
         self.categories[index] = new_category
-        self.save_categories()
+        self.save_categories(self.categories)
 
-        # Update Excel sheet
+        # Update Excel sheet with expenses
         updated_count = self.update_category_in_excel(old_category, new_category)
 
         # Clean up session
@@ -277,17 +309,6 @@ class CategoriesCog:
                 df.to_excel(excel_file, index=False)
 
             return updated_count
-
         except Exception as e:
             print(f"Error updating Excel file: {e}")
             return updated_count
-
-    def setup_callback_handlers(self):
-        """Setup callback handlers for this cog"""
-        @self.bot.callback_query_handler(func=lambda call: call.data.startswith('remove_cat_'))
-        def process_remove_category_callback(call):
-            self.process_remove_category_callback_impl(call)
-
-        @self.bot.callback_query_handler(func=lambda call: call.data.startswith('edit_cat_'))
-        def process_edit_category_callback(call):
-            self.process_edit_category_callback_impl(call)

@@ -3,10 +3,11 @@ from telebot import types
 
 
 class AddCommandCog:
-    def __init__(self, bot, allowed_user_id, categories_cog):
+    def __init__(self, bot, allowed_user_id, categories_cog, accounts_cog):
         self.bot = bot
         self.ALLOWED_USER_ID = allowed_user_id
-        self.categories_cog = categories_cog  # Store reference to categories cog
+        self.categories_cog = categories_cog
+        self.accounts_cog = accounts_cog
         self.user_data = {}
 
         # Register command handler
@@ -18,6 +19,7 @@ class AddCommandCog:
         return message.from_user.id == self.ALLOWED_USER_ID
 
     def add_command(self, message):
+        """Start the add expense process by asking for name"""
         if not self.is_authorized(message):
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
             return
@@ -31,18 +33,70 @@ class AddCommandCog:
 
     # step 1: get name of transaction
     def process_name_step(self, message):
+        """Process name input and ask for account selection"""
         if not self.is_authorized(message):
             return
 
         user_id = message.from_user.id
         self.user_data[user_id]["name"] = message.text
+        self.user_data[user_id]["step"] = "account"
+
+        # Get accounts from accounts cog
+        accounts = self.accounts_cog.get_accounts()
+
+        if not accounts:
+            self.bot.reply_to(message, "No accounts available. Please use /addaccount to add some first.")
+            return
+
+        # Create inline keyboard with account buttons
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        account_buttons = []
+
+        for account in accounts:
+            account_buttons.append(types.InlineKeyboardButton(
+                text=account,
+                callback_data=f"account_{account}"
+            ))
+
+        markup.add(*account_buttons)
+
+        # Ask for account selection with inline buttons
+        self.bot.send_message(
+            message.chat.id,
+            "Please select an account:",
+            reply_markup=markup
+        )
+
+    def setup_callback_handlers(self):
+        # This needs to be called after cog initialization
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith('category_'))
+        def process_category_callback(call):
+            self.process_category_callback_impl(call)
+
+    # step 2 & 3: get category & amount
+    def process_category_callback_impl(self, call):
+        """Handle account selection and ask for category selection"""
+        user_id = call.from_user.id
+        if user_id != self.ALLOWED_USER_ID:
+            return
+
+        # Extract account from callback data
+        selected_account = call.data.replace('account_', '', 1)
+        self.user_data[user_id]["account"] = selected_account
         self.user_data[user_id]["step"] = "category"
 
-        # Get categories from categories cog
+        # Edit the message to show account selection
+        self.bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"Selected account: {selected_account}"
+        )
+
+        # Get categories from categories cog for category selection
         categories = self.categories_cog.get_categories()
 
         if not categories:
-            self.bot.reply_to(message, "No categories available. Please use /addcategory to add some first.")
+            self.bot.send_message(call.message.chat.id, "No categories available. Please use /addcategory to add some first.")
             return
 
         # Create inline keyboard with category buttons
@@ -59,39 +113,10 @@ class AddCommandCog:
 
         # Ask for the category with inline buttons
         self.bot.send_message(
-            message.chat.id,
+            call.message.chat.id,
             "Please select a category:",
             reply_markup=markup
         )
-
-    def setup_callback_handlers(self):
-        # This needs to be called after cog initialization
-        @self.bot.callback_query_handler(func=lambda call: call.data.startswith('category_'))
-        def process_category_callback(call):
-            self.process_category_callback_impl(call)
-
-    # step 2 & 3: get category & amount
-    def process_category_callback_impl(self, call):
-        user_id = call.from_user.id
-
-        if user_id != self.ALLOWED_USER_ID:
-            return
-
-        # Extract category from callback data
-        selected_category = call.data.split('_')[1]
-        self.user_data[user_id]["category"] = selected_category
-        self.user_data[user_id]["step"] = "amount"
-
-        # Edit the message to show selection
-        self.bot.edit_message_text(
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            text=f"Selected category: {selected_category}"
-        )
-
-        # Ask for the amount
-        msg = self.bot.send_message(call.message.chat.id, "Please enter the amount:")
-        self.bot.register_next_step_handler(msg, self.process_amount_step)
 
     def process_amount_step(self, message):
         if not self.is_authorized(message):
@@ -126,7 +151,8 @@ class AddCommandCog:
         self.bot.reply_to(message, summary)
 
     def save_to_excel(self, user_id):
-        file_path = 'expenses.xlsx'
+        file_path = 'data.xlsx'
+        sheet_name = "Expenses"
 
         # Create a new row with the user's data
         new_data = {
@@ -138,15 +164,20 @@ class AddCommandCog:
 
         # Check if file exists
         try:
-            # If file exists, append to it
-            existing_df = pd.read_excel(file_path)
-            updated_df = pd.concat([existing_df, new_df], ignore_index=True)
-        except FileNotFoundError:
-            # If file doesn't exist, create a new one
-            updated_df = new_df
-
-        # Save to Excel
-        updated_df.to_excel(file_path, index=False)
+            with pd.ExcelFile(file_path) as xls:
+                # If file exists, append to it
+                existing_df = pd.read_excel(xls, sheet_name=sheet_name)
+                updated_df = pd.concat([existing_df, new_df], ignore_index=True)
+            with pd.ExcelWriter(file_path, mode='a', if_sheet_exists='replace') as writer:
+                updated_df.to_excel(writer, sheet_name=sheet_name, index=False)
+        except Exception:
+            # If file doesn't exist, create a new one with both sheets
+            with pd.ExcelWriter(file_path) as writer:
+                # Create Categories sheet with defaults
+                pd.DataFrame({"Category": self.categories_cog.get_categories()}).to_excel(
+                    writer, sheet_name="Categories", index=False)
+                # Create Expenses sheet with the new data
+                new_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
         # Clear user data
         self.user_data.pop(user_id)
