@@ -20,23 +20,23 @@ help_text = """
 Welcome to your expense tracker bot!
 
 *Expense Tracking Commands:*
-/add - Add a new expense entry
+    /add - Add a new expense entry
 
 *Account Management:*
-/accounts - List all available accounts
-/addaccount - Add a new account
-/editaccount - Edit/rename an account
-/removeaccount - Remove an account
+    /accounts - List all available accounts
+    /addaccount - Add a new account
+    /editaccount - Edit/rename an account
+    /removeaccount - Remove an account
 
 *Category Management:*
-/categories - List all available categories
-/addcategory - Add a new category
-/editcategory - Edit/rename a category
-/removecategory - Remove a category
+    /categories - List all available categories
+    /addcategory - Add a new category
+    /editcategory - Edit/rename a category
+    /removecategory - Remove a category
 
 *General Commands:*
-/start - Start the bot
-/help - Show this help message
+    /start - Start the bot
+    /help - Show this help message
 """
 
 
