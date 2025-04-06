@@ -63,12 +63,35 @@ def help_command(message):
     bot.reply_to(message, help_text, parse_mode="Markdown")
 
 
+@bot.message_handler(commands=['cancel'])
+def cancel_command(message):
+    user_id = message.from_user.id
+    cancelled = False
+
+    # Clear any pending AddCommandCog state.
+    if user_id in add_cog.user_data:
+        del add_cog.user_data[user_id]
+        cancelled = True
+
+    # Clear any pending onboarding data in AccountsCog.
+    if user_id in accounts_cog.onboarding_data:
+        del accounts_cog.onboarding_data[user_id]
+        cancelled = True
+
+    # You can repeat this process for any other in-progress command states.
+
+    if cancelled:
+        bot.reply_to(message, "Operation canceled.")
+    else:
+        bot.reply_to(message, "No operation in progress to cancel.")
+
+
 # Load cogs
 def load_cogs():
     # Initialize the accounts cog first (for onboarding)
     accounts_cog = AccountsCog(bot, ALLOWED_USER_ID)
     # Initialize the categories cog
-    categories_cog = CategoriesCog(bot, ALLOWED_USER_ID, defer_creation=accounts_cog.is_first_time())
+    categories_cog = CategoriesCog(bot, ALLOWED_USER_ID, accounts_cog)
     # Initialize the add command cog
     add_cog = AddCommandCog(bot, ALLOWED_USER_ID, categories_cog, accounts_cog)
     # Setup callback handlers after initialization
@@ -90,7 +113,7 @@ if __name__ == "__main__":
         exit(1)
 
     # Load all cogs
-    accounts_cog, categories_cog, cogs = load_cogs()
+    accounts_cog, categories_cog, add_cog = load_cogs()
 
     print("Bot started successfully!")
     bot.polling(none_stop=True)

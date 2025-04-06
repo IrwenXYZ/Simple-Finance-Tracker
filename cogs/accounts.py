@@ -173,6 +173,10 @@ class AccountsCog:
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
             return
 
+        if self.is_first_time():
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
+            return
+
         if not self.accounts:
             self.bot.reply_to(message, "No accounts defined. Use /addaccount to add some.")
             return
@@ -184,6 +188,10 @@ class AccountsCog:
         """Command to add a new account"""
         if not self.is_authorized(message):
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
+            return
+
+        if self.is_first_time():
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
             return
 
         msg = self.bot.reply_to(message, "What account would you like to add?")
@@ -214,6 +222,10 @@ class AccountsCog:
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
             return
 
+        if self.is_first_time():
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
+            return
+
         if not self.accounts:
             self.bot.reply_to(message, "No accounts to remove.")
             return
@@ -238,6 +250,10 @@ class AccountsCog:
         """Command to edit an account name"""
         if not self.is_authorized(message):
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
+            return
+
+        if self.is_first_time():
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
             return
 
         if not self.accounts:

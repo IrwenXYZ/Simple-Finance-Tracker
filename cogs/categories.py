@@ -3,12 +3,12 @@ import os
 
 
 class CategoriesCog:
-    def __init__(self, bot, allowed_user_id, defer_creation=False):
+    def __init__(self, bot, allowed_user_id, accounts_cog):
         self.bot = bot
         self.ALLOWED_USER_ID = allowed_user_id
         self.data_file = "data.xlsx"  # Excel file for categories
         self.sheet_name = "Categories"  # Sheet name for categories
-        self.defer_creation = defer_creation
+        self.first_load = accounts_cog.is_first_time()
         self.categories = self.load_categories()
 
         # Register command handlers
@@ -44,7 +44,7 @@ class CategoriesCog:
                 return default_categories
         else:
             # File doesn't exist
-            if not self.defer_creation:
+            if not self.first_load:
                 # Save defaults to file only if not deferred
                 self.save_categories(default_categories)
             return default_categories
@@ -79,6 +79,10 @@ class CategoriesCog:
             self.bot.reply_to(message, "No categories defined. Use /addcategory to add some.")
             return
 
+        if self.first_load:
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
+            return
+
         categories_text = "Available categories:\n\n" + "\n".join([f"• {category}" for category in self.categories])
         self.bot.reply_to(message, categories_text)
 
@@ -86,6 +90,10 @@ class CategoriesCog:
         """Command to add a new category"""
         if not self.is_authorized(message):
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
+            return
+
+        if self.first_load:
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
             return
 
         msg = self.bot.reply_to(message, "What category would you like to add?")
@@ -120,6 +128,10 @@ class CategoriesCog:
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
             return
 
+        if self.first_load:
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
+            return
+
         if not self.categories:
             self.bot.reply_to(message, "No categories to remove.")
             return
@@ -145,6 +157,10 @@ class CategoriesCog:
         """Command to edit a category name"""
         if not self.is_authorized(message):
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
+            return
+
+        if self.first_load:
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
             return
 
         if not self.categories:

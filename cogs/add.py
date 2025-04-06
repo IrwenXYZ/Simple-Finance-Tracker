@@ -24,6 +24,10 @@ class AddCommandCog:
             self.bot.reply_to(message, "Sorry, you're not authorized to use this bot.")
             return
 
+        if self.accounts_cog.is_first_time():
+            self.bot.reply_to(message, "Please complete the initial setup first by using the /start command.")
+            return
+
         # Initialize user data
         self.user_data[message.from_user.id] = {"step": "name"}
 
