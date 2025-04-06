@@ -172,6 +172,7 @@ class AddCommandCog:
 
         # Store summary details before saving and clearing user_data
         name = self.user_data[user_id].get("name", "Unknown")
+        account = self.user_data[user_id].get("account", "Unknown")
         category = self.user_data[user_id].get("category", "Unknown")
         amount_val = self.user_data[user_id].get("amount", 0)
 
@@ -182,6 +183,7 @@ class AddCommandCog:
         summary = (
             f"Entry saved successfully!\n\n"
             f"Name: {name}\n"
+            f"Account: {account}\n"
             f"Category: {category}\n"
             f"Amount: {amount_val}"
         )
@@ -194,6 +196,7 @@ class AddCommandCog:
         # Create a new row with the user's data
         new_data = {
             'Name': [self.user_data[user_id]["name"]],
+            'Account': [self.user_data[user_id]["account"]],
             'Category': [self.user_data[user_id]["category"]],
             'Amount': [self.user_data[user_id]["amount"]]
         }
