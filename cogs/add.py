@@ -72,69 +72,88 @@ class AddCommandCog:
         )
 
     def setup_callback_handlers(self):
-        # This needs to be called after cog initialization
-        @self.bot.callback_query_handler(func=lambda call: call.data.startswith(('category_', 'account_')))
-        def process_category_callback(call):
-            self.process_category_callback_impl(call)
+        # Split into two separate handlers
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith('account_'))
+        def process_account_callback(call):
+            self.handle_account_selection(call)
 
-    # step 2 & 3: get category & amount
-    def process_category_callback_impl(self, call):
-        """Handle both account and category selections"""
+        @self.bot.callback_query_handler(func=lambda call: call.data.startswith('category_'))
+        def process_category_callback(call):
+            self.handle_category_selection(call)
+
+    def handle_account_selection(self, call):
+        """Handle account selection and ask for category selection"""
         user_id = call.from_user.id
         if user_id != self.ALLOWED_USER_ID:
             return
 
-        # Always acknowledge the callback query
+        # Acknowledge the callback query
         self.bot.answer_callback_query(call.id)
 
-        # Handle account selection
-        if call.data.startswith('account_'):
-            selected_account = call.data.replace('account_', '', 1)
-            self.user_data[user_id]["account"] = selected_account
-            self.user_data[user_id]["step"] = "category"
+        # Extract account from callback data
+        selected_account = call.data.replace('account_', '', 1)
+        self.user_data[user_id]["account"] = selected_account
+        self.user_data[user_id]["step"] = "category"
 
-            # Edit the message to show account selection
-            self.bot.edit_message_text(
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                text=f"Selected account: {selected_account}"
-            )
+        # Edit the message to show account selection
+        self.bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"Selected account: {selected_account}"
+        )
 
-            # Display category selection buttons
-            categories = self.categories_cog.get_categories()
-            if not categories:
-                self.bot.send_message(call.message.chat.id, "No categories available. Please use /addcategory to add some first.")
-                return
+        # Get categories from categories cog for category selection
+        categories = self.categories_cog.get_categories()
+        if not categories:
+            self.bot.send_message(call.message.chat.id, "No categories available. Please use /addcategory to add some first.")
+            return
 
-            markup = types.InlineKeyboardMarkup(row_width=2)
-            category_buttons = []
-            for category in categories:
-                category_buttons.append(types.InlineKeyboardButton(
-                    text=category,
-                    callback_data=f"category_{category}"
-                ))
-            markup.add(*category_buttons)
+        # Create inline keyboard with category buttons
+        markup = types.InlineKeyboardMarkup(row_width=2)
+        category_buttons = []
+        for category in categories:
+            category_buttons.append(types.InlineKeyboardButton(
+                text=category,
+                callback_data=f"category_{category}"
+            ))
+        markup.add(*category_buttons)
 
-            self.bot.send_message(
-                call.message.chat.id,
-                "Please select a category:",
-                reply_markup=markup
-            )
+        # Ask for the category with inline buttons
+        self.bot.send_message(
+            call.message.chat.id,
+            "Please select a category:",
+            reply_markup=markup
+        )
 
-        # Handle category selection
-        elif call.data.startswith('category_'):
-            selected_category = call.data.replace('category_', '', 1)
-            self.user_data[user_id]["category"] = selected_category
-            self.user_data[user_id]["step"] = "amount"
+    def handle_category_selection(self, call):
+        """Handle category selection and ask for amount"""
+        user_id = call.from_user.id
+        if user_id != self.ALLOWED_USER_ID:
+            return
 
-            # Notify user of selected category and ask for amount
-            msg = self.bot.send_message(
-                call.message.chat.id,
-                f"Selected category: {selected_category}\nPlease enter the amount:"
-            )
+        # Acknowledge the callback query
+        self.bot.answer_callback_query(call.id)
 
-            # Register the next step for amount input
-            self.bot.register_next_step_handler(msg, self.process_amount_step)
+        # Extract category from callback data
+        selected_category = call.data.replace('category_', '', 1)
+        self.user_data[user_id]["category"] = selected_category
+        self.user_data[user_id]["step"] = "amount"
+
+        # Edit the message to show category selection
+        self.bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=f"Selected category: {selected_category}"
+        )
+
+        # Ask for the amount
+        msg = self.bot.send_message(
+            call.message.chat.id,
+            "Please enter the amount:"
+        )
+
+        # Register the next step for amount input
+        self.bot.register_next_step_handler(msg, self.process_amount_step)
 
     def process_amount_step(self, message):
         if not self.is_authorized(message):
