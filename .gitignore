@@ -1,5 +1,6 @@
 ## Project specific files
 userdata/
+data.xlsx
 
 ## Get latest from https://github.com/github/gitignore/blob/main/Python.gitignore
 
